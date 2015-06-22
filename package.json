@@ -1,0 +1,23 @@
+{
+  "name": "torso-brec",
+  "version": "0.1.0",
+  "description": "Torso view for BREC tables",
+  "main": "index.js",
+  "dependencies": {},
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vecnatechnologies/torso-brec.git"
+  },
+  "keywords": [
+    "backbone-torso",
+    "torso",
+    "brec",
+    "brec-tables"
+  ],
+  "author": "Nicole Tubacki <nmtubacki@gmail.com>",
+  "bugs": {
+    "url": "https://github.com/vecnatechnologies/torso-brec/issues"
+  },
+  "homepage": "https://github.com/vecnatechnologies/torso-brec"
+}
