@@ -196,9 +196,11 @@
     // ----- Callback API ----------------------------------------------------------------------------------------------------------
 
     /**
-     * Initializes the columns of the BREC table.
-     * Default method may be overridden.
+     * Initializes the columns of the BREC table. Column information is used in both _translateData and _constructColumns.
+     * columnInit should use _buildColumnConfig to properly format each column's information.
+     * The ordering of these items is very important as it determines what will be sent out in the orderCol queryParam.
      * @method columnInit
+     * @return {Object[]} Returns the information to be used in constructing the columns
      */
     columnInit: _.noop,
 
@@ -228,7 +230,8 @@
     // ----- Data Manipulation -----------------------------------------------------------------------------------------------------
 
     /**
-     * Builds the column input to be in the format DataTables expects.
+     * Builds the column input to be in the format DataTables expects. For more information, see the
+     * DataTables documentation at https://datatables.net/reference/option/columns
      * @private
      * @method buildColumnConfig
      * @param {String} label The id and name of the column
@@ -287,7 +290,6 @@
      */
     _translateData: function(idListOrder) {
       var view = this;
-  //    var columnInfo = this.columnConfig;
       var columnInfo = _.map(this.columnConfig, function(column){return column.label;});
       return _.compact(idListOrder.map(function(modelId) {
         var model = view.collection.get(modelId);
