@@ -23,6 +23,7 @@
      * See DataTables documentation: https://datatables.net/reference/option/dom
      */
     tableControls: '<"top-pagination" p><"filters" <"filter-row" <"showing-filter" li><"search-filter" f>>>rtp',
+    columnOrder: [],
 
 
     // ----- Overrides -------------------------------------------------------------------------------------------------------------
@@ -137,15 +138,18 @@
         'ajax': view._requestData.bind(view),
         'fnStateLoadCallback': function ( settings ) {
           try {
-            return JSON.parse(
+            var data = JSON.parse(
               (settings.iStateDuration === -1 ? sessionStorage : localStorage).getItem('DataTables_settings_' + location.pathname)
             );
+            view.columnOrder = data.columnOrder;
+            return data;
           } catch (e) {
             // Errors here indicate a failure to parse the settings JSON. Since this is a non-critical system, fail silently.
           }
         },
         'fnStateSaveCallback': function ( settings, data ) {
           try {
+            data.columnOrder = view.columnOrder;
             (settings.iStateDuration === -1 ? sessionStorage : localStorage).setItem(
               'DataTables_settings_' + location.pathname, JSON.stringify( data )
             );
@@ -169,6 +173,8 @@
     _requestData : function(tableParams, callback) {
       var view = this;
       var collection = this.collection;
+      view._updateColumnOrdering(tableParams);
+      
       $.ajax({
         url: view.url,
         method: 'POST',
@@ -228,6 +234,27 @@
 
 
     // ----- Data Manipulation -----------------------------------------------------------------------------------------------------
+    
+    /**
+     * The effect of this method is twofold. First it updates the view's history of column orderings.
+     * Second it modifies the tableParams orderings to behave as a multicolumn ordering based off of the view's
+     * history even on single ordering requests.
+     * @private
+     * @method _updateColumnOrdering
+     * @param {Object} tableParams Parameters for the ajax request to retrieve the desired data
+     */
+    _updateColumnOrdering: function(tableParams) {
+      var columnList = tableParams.order.map(function(order) {
+        return order.column;
+      });
+
+      this.columnOrder = _.reject(this.columnOrder, function(columnData) {
+        return _.contains(columnList, columnData.column);
+      });
+
+      this.columnOrder = tableParams.order.concat(this.columnOrder);
+      tableParams.order = this.columnOrder.slice();
+    },
 
     /**
      * Builds the column input to be in the format DataTables expects. For more information, see the
