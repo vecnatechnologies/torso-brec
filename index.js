@@ -112,7 +112,7 @@
       this.$('.action-view').append($(colvis.button()));
 
       // initialize column reordering
-      new $.fn.dataTable.ColReorder(this.dataTable, this.extendColReorder);
+      new $.fn.dataTable.ColReorder(this.dataTable, this.ColReorderExtensions);
 
 
       // Initialize the fixed headers
@@ -134,15 +134,6 @@
      */
     _updateFixedHeaderPos: function() {
       this.tableHeader._fnUpdateClones(true);
-    },
-
-    /**
-     * Extends dataTable options, retaining the defaults
-     * @private
-     * @method _extendOptions
-     */
-    _extendOptions: function() {
-      _.extend(this.colVisConfig, this.extendColVis);
     },
 
     /**
@@ -181,8 +172,8 @@
           }
         },
         'columns': _.map(this.columnConfig, function(column){return column.options;})
-      }, view.extendTableOptions));
-      this._extendOptions();
+      }, view.TableOptionsExtensions));
+      _.extend(this.colVisConfig, this.ColVisExtensions);
     },
 
     /**
