@@ -23,7 +23,11 @@
      * See DataTables documentation: https://datatables.net/reference/option/dom
      */
     tableControls: '<"top-pagination" p><"filters" <"filter-row" <"showing-filter" li><"search-filter" f>>>rtp',
-    columnOrder: [],
+    columnSortingOrder: [],
+    colVisConfig: {
+      'buttonText': "<span class='action-option icon-eye-open'></span>",
+      'restore': "Restore",
+     },
 
 
     // ----- Overrides -------------------------------------------------------------------------------------------------------------
@@ -102,6 +106,15 @@
      * @method _brecWidgetsInit
      */
     _brecWidgetsInit: function() {
+
+      // Initialize the show/hide button
+      var colvis = new $.fn.dataTable.ColVis(this.dataTable, this.colVisConfig);
+      this.$('.action-view').append($(colvis.button()));
+
+      // initialize column reordering
+      new $.fn.dataTable.ColReorder(this.dataTable, this.extendColReorder);
+
+
       // Initialize the fixed headers
       this.tableHeader = new $.fn.dataTable.FixedHeader(this.dataTable, {
         zTop: 1,
@@ -124,6 +137,15 @@
     },
 
     /**
+     * Extends dataTable options, retaining the defaults
+     * @private
+     * @method _extendOptions
+     */
+    _extendOptions: function() {
+      _.extend(this.colVisConfig, this.extendColVis);
+    },
+
+    /**
      * Initializes the BREC table.
      * Default method may be extended with view.brecOptionsOverrides.
      * @method brecTableInit
@@ -135,13 +157,14 @@
         'dom': view.tableControls,
         'stateSave': true,
         'serverSide': true,
+        'responsive': true,
         'ajax': view._requestData.bind(view),
-        'fnStateLoadCallback': function ( settings ) {
+        'fnStateLoadCallback': function() {
           try {
             var data = JSON.parse(
-              (settings.iStateDuration === -1 ? sessionStorage : localStorage).getItem('DataTables_settings_' + location.pathname)
+              localStorage.getItem('DataTables_settings_' + location.pathname)
             );
-            view.columnOrder = data.columnOrder;
+            view.columnSortingOrder = data.columnSortingOrder;
             return data;
           } catch (e) {
             // Errors here indicate a failure to parse the settings JSON. Since this is a non-critical system, fail silently.
@@ -149,8 +172,8 @@
         },
         'fnStateSaveCallback': function ( settings, data ) {
           try {
-            data.columnOrder = view.columnOrder;
-            (settings.iStateDuration === -1 ? sessionStorage : localStorage).setItem(
+            data.columnSortingOrder = view.columnSortingOrder;
+            localStorage.setItem(
               'DataTables_settings_' + location.pathname, JSON.stringify( data )
             );
           } catch (e) {
@@ -158,7 +181,8 @@
           }
         },
         'columns': _.map(this.columnConfig, function(column){return column.options;})
-      }, view.brecOptionsOverrides));
+      }, view.extendTableOptions));
+      this._extendOptions();
     },
 
     /**
@@ -172,9 +196,8 @@
      */
     _requestData : function(tableParams, callback) {
       var view = this;
-      var collection = this.collection;
-      view._updateColumnOrdering(tableParams);
-      
+      view._updateColumnSortOrdering(tableParams);
+
       $.ajax({
         url: view.url,
         method: 'POST',
@@ -184,7 +207,7 @@
         success: function(result) {
           view.trigger('successServerRetrieval');
 
-          collection.fetchByIds(result.list).then(function() {
+          view.collection.fetchByIds(result.list).then(function() {
             callback(view._prepareData(tableParams, result));
             view.trigger('tableUpdateComplete');
           });
@@ -236,29 +259,30 @@
     // ----- Data Manipulation -----------------------------------------------------------------------------------------------------
     
     /**
-     * The effect of this method is twofold. First it updates the view's history of column orderings.
+     * The effect of this method is twofold. First it updates the view's history of column sorting orderings.
      * Second it modifies the tableParams orderings to behave as a multicolumn ordering based off of the view's
      * history even on single ordering requests.
      * @private
-     * @method _updateColumnOrdering
+     * @method _updateColumnSortOrdering
      * @param {Object} tableParams Parameters for the ajax request to retrieve the desired data
      */
-    _updateColumnOrdering: function(tableParams) {
+    _updateColumnSortOrdering: function(tableParams) {
       var columnList = tableParams.order.map(function(order) {
         return order.column;
       });
 
-      this.columnOrder = _.reject(this.columnOrder, function(columnData) {
+      this.columnSortingOrder = _.reject(this.columnSortingOrder, function(columnData) {
         return _.contains(columnList, columnData.column);
       });
 
-      this.columnOrder = tableParams.order.concat(this.columnOrder);
-      tableParams.order = this.columnOrder.slice();
+      this.columnSortingOrder = tableParams.order.concat(this.columnSortingOrder);
+      tableParams.order = this.columnSortingOrder.slice();
     },
 
     /**
      * Builds the column input to be in the format DataTables expects. For more information, see the
-     * DataTables documentation at https://datatables.net/reference/option/columns
+     * DataTables documentation at https://datatables.net/reference/option/columns.
+     * Options must include 'data' for colReorder.
      * @private
      * @method buildColumnConfig
      * @param {String} label The id and name of the column
@@ -268,7 +292,7 @@
     _buildColumnConfig: function(label, columnOptions) {
       return {
         'label': label,
-        'options': columnOptions || {'name': label}
+        'options': columnOptions || {'name': label, 'data': label}
       };
     },
 
@@ -292,10 +316,10 @@
       }
 
       return {
-        'data': translatedData,
+        'draw': parseInt(tableParams.draw),
         'recordsTotal': totalRecords,
         'recordsFiltered': totalRecords,
-        'draw': parseInt(tableParams.draw)
+        'data': translatedData
       };
     },
 
@@ -304,8 +328,9 @@
      * Translates the entries that exist within the collection that have ids corresponding to ids in the given list.
      *
      * We need to translate the collection of objects that Torso will retrieve into a format that DataTables expects.
-     * Instead of an array of objects with properties, DataTables requires an array of (array of objects) where the
-     * (array of objects) is the equivalent to the model object containing properties.
+     * Instead of an array of objects with properties, DataTables requires an array of (object of objects) where the
+     * (object of objects) is the equivalent to the model object containing properties. ColReorder requires the keys
+     * of the objects to be the identifiers of the columns.
      *
      * Note that we are doing idListOrder.map(). This allows us to use the variable we set aside that contained the
      * correct list order and preserve that ordering for our final data representation.
@@ -313,28 +338,27 @@
      * @private
      * @method _translateData
      * @param {Number[]} idListOrder An array of longs with the ids of the objects to add in the desired order.
-     * @return {Object[]} modelAsArray Returns the translated column information
+     * @return {Object[]} modelAsObject Returns the translated column information
      */
     _translateData: function(idListOrder) {
-      var view = this;
-      var columnInfo = _.map(this.columnConfig, function(column){return column.label;});
+      var columnInfo = _.map(this.columnInit(), function(column){return column.label;});
       return _.compact(idListOrder.map(function(modelId) {
-        var model = view.collection.get(modelId);
+        var model = this.collection.get(modelId);
 
-        // DataTables can not handle empty or null objects in the array list.
+        // DataTables can not handle empty or null objects in the object list.
         // Therefore, we should default to returning null if model does not exist and then filter those values out with compact.
-        var modelAsArray = null;
+        var modelAsObject = null;
         if (model) {
           // The ordering here is very important as it determines the ordering of cells in each table row.
           // Table cells will be placed from left to right in the same order as the attributes listed here.
-          modelAsArray = [];
+          modelAsObject = {};
           for (var i=0; i<columnInfo.length; i++) {
             // Utilize handlebars helpers to escape the html
-            modelAsArray.push(Handlebars.Utils.escapeExpression(model.get(columnInfo[i])));
+            modelAsObject[columnInfo[i]] = Handlebars.Utils.escapeExpression(model.get(columnInfo[i]));
           }
         }
-        return modelAsArray;
-      }));
+        return modelAsObject;
+      }, this));
     }
 
   });
