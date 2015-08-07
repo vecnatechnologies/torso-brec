@@ -98,6 +98,9 @@
 
       // Remove the window resize event.
       $(window).off('resize.updateFixedHeaderPosition');
+
+      // Clear any column searches
+      this.$(".dataTable tfoot input").off();
     },
 
     /**
@@ -138,6 +141,7 @@
           .search(this.value)
           .draw();
       });
+
     },
 
     /**
