@@ -27,7 +27,7 @@
     colVisConfig: {
       'buttonText': "<span class='action-option icon-eye-open'></span>",
       'restore': "Restore",
-     },
+    },
 
 
     // ----- Overrides -------------------------------------------------------------------------------------------------------------
@@ -98,21 +98,29 @@
 
       // Remove the window resize event.
       $(window).off('resize.updateFixedHeaderPosition');
+
+      // Clear any column searches
+      this.$(".dataTable tfoot input").off();
     },
 
     /**
      * Initializes all of the BREC table widgets. Needs to be called after _brecTableInit.
+     * Note that tables cannot both be responsive and have colVis enabled.
      * @private
      * @method _brecWidgetsInit
      */
     _brecWidgetsInit: function() {
+      var view = this;
 
-      // Initialize the show/hide button
-      var colvis = new $.fn.dataTable.ColVis(this.dataTable, this.colVisConfig);
-      this.$('.action-view').append($(colvis.button()));
+      // ColVis can only be used when the table is not responsive
+      if (!this.responsiveTable) {
+        // Initialize the show/hide button
+        var colvis = new $.fn.dataTable.ColVis(this.dataTable, this.colVisConfig);
+        this.$('.action-view').append($(colvis.button()));
+      };
 
-      // initialize column reordering
-      new $.fn.dataTable.ColReorder(this.dataTable, this.ColReorderExtensions);
+      // Initialize column reordering
+      new $.fn.dataTable.ColReorder(this.dataTable, this.colReorderExtensions);
 
 
       // Initialize the fixed headers
@@ -125,6 +133,15 @@
 
       // Need to update the FixedHeader positions on window resize
       $(window).on('resize.updateFixedHeaderPosition', this._updateFixedHeaderPos.bind(this));
+
+      // Add search functionality to individual columns
+      this.$(".dataTable tfoot input").on('keyup change', function () {
+        view.dataTable
+          .column($(this).parent().index()+':visible' )
+          .search(this.value)
+          .draw();
+      });
+
     },
 
     /**
@@ -148,7 +165,7 @@
         'dom': view.tableControls,
         'stateSave': true,
         'serverSide': true,
-        'responsive': true,
+        'responsive': view.responsiveTable || false,
         'ajax': view._requestData.bind(view),
         'fnStateLoadCallback': function() {
           try {
@@ -163,6 +180,10 @@
         },
         'fnStateSaveCallback': function ( settings, data ) {
           try {
+            // Clear individual column searches
+            for (var i = 0; i<data.columns.length; i++) {
+              data.columns[i].search.search = "";
+            }
             data.columnSortingOrder = view.columnSortingOrder;
             localStorage.setItem(
               'DataTables_settings_' + location.pathname, JSON.stringify( data )
@@ -172,8 +193,8 @@
           }
         },
         'columns': _.map(this.columnConfig, function(column){return column.options;})
-      }, view.TableOptionsExtensions));
-      _.extend(this.colVisConfig, this.ColVisExtensions);
+      }, view.tableOptionsExtensions));
+      _.extend(this.colVisConfig, this.colVisExtensions);
     },
 
     /**
@@ -201,6 +222,7 @@
           view.collection.fetchByIds(result.list).then(function() {
             callback(view._prepareData(tableParams, result));
             view.trigger('tableUpdateComplete');
+
           });
         },
         error: function() {
