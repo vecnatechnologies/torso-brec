@@ -30,7 +30,34 @@
     },
 
 
+    // ----- Callback API ----------------------------------------------------------------------------------------------------------
+
+    /**
+     * Initializes the columns of the BREC table. Column information is used in _translateData.
+     * columnInit should use _buildColumnConfig to properly format each column's information.
+     * The ordering of these items is very important as it determines what will be sent out in the orderCol queryParam.
+     * @method columnInit
+     * @return {Object[]} Returns the information to be used in constructing the columns
+     */
+    columnInit: _.noop,
+
+    /**
+     * Specifies what to do when the server call is successful.
+     * Default method may be overridden.
+     * @method successfulServerRetrieval
+     */
+    successfulServerRetrieval: _.noop,
+
+    /**
+     * Specifies what to do when the server call is unsuccessful.
+     * Default method may be overridden.
+     * @method errorServerRetrieval
+     */
+    errorServerRetrieval: _.noop,
+
+
     // ----- Overrides -------------------------------------------------------------------------------------------------------------
+
     /**
      * @method initialize
      * @override
@@ -40,79 +67,46 @@
     },
 
     /**
-     * @method render
-     * @override
-     */
-    render: function() {
-      this.templateRender(this.$el, this.template);
-      this.delegateEvents();
-    },
-
-    /**
-     * @method activateCallback
-     * @override
-     */
-    activateCallback: function() {
-      this.on('successServerRetrieval', this.successfulServerRetrieval);
-      this.on('errorServerRetrieval', this.errorServerRetrieval);
-      this.on('tableUpdateComplete', this.tableUpdateComplete);
-    },
-
-    /**
-     * @method deactivateCallback
-     * @override
-     */
-    deactivateCallback: function() {
-      this.off('successServerRetrieval');
-      this.off('errorServerRetrieval');
-      this.off('tableUpdateComplete');
-    },
-
-
-    // ----- Helpers ---------------------------------------------------------------------------------------------------------------
-    /**
      * Construct any additional resources when the view is attached to the DOM.
      * Currently this is used to initialize javascript widgets that affect the display.
-     * @method attach
+     * @method _attached
      * @override
      */
-    attach: function(element) {
-      this.activateCallback();
-      View.prototype.attach.call(this, element);
-      this.__brecTableInit();
-      this.__brecWidgetsInit();
+    _attached: function() {
+
+      // Activate BREC event listeners
+      this.on('successServerRetrieval', this.successfulServerRetrieval);
+      this.on('errorServerRetrieval', this.errorServerRetrieval);
+
+      this._brecTableInit();
+      this._brecWidgetsInit();
     },
 
     /**
-     * Cleanup any resources when the view is detached from the DOM
-     * @method detach
+     * Destroy any additional resources when the view is removed from the DOM.
+     * Currently this is used to remove javascript widgets that affect the display.
+     * @method _detached
      * @override
      */
-    detach: function() {
-      this.deactivateCallback();
+    _detached: function() {
 
-      // FixedHeader generated its dom elements off of the body rather than relative to the table, so we need to clean this up.
-      var fixedHeaderEl = $('.fixedHeader');
-      if(fixedHeaderEl) {
-        fixedHeaderEl.remove();
-      }
+      // Deactivate BREC event listeners
+      this.off('successServerRetrieval');
+      this.off('errorServerRetrieval');
 
-      // Remove the window resize event.
-      $(window).off('resize.updateFixedHeaderPosition');
-
-      // Clear any column searches
-      this.$('.dataTable tfoot input').off();
-
-      View.prototype.detach.call(this);
+      this._brecWidgetsDestroy();
     },
 
+
+    // ----- Widget Management -----------------------------------------------------------------------------------------------------
+
     /**
-     * Initializes all of the BREC table widgets. Needs to be called after __brecTableInit.
+     * Initializes all of the BREC table widgets. Needs to be called after _brecTableInit.
      * Note that tables cannot both be responsive and have colVis enabled.
      * @private
-     * @method __brecWidgetsInit
+     * @method _brecWidgetsInit
      */
-    __brecWidgetsInit: function() {
+    _brecWidgetsInit: function() {
       var view = this;
 
       // ColVis can only be used when the table is not responsive
@@ -135,7 +129,7 @@
       });
 
       // Need to update the FixedHeader positions on window resize
-      $(window).on('resize.updateFixedHeaderPosition', this.__updateFixedHeaderPos.bind(this));
+      $(window).on('resize.updateFixedHeaderPosition', this._updateFixedHeaderPos.bind(this));
 
       // Add search functionality to individual columns
       this.$(".dataTable tfoot input").on('keyup change', function () {
@@ -148,20 +142,42 @@
     },
 
     /**
+     * Destroys all of the BREC table widgets.
+     * @private
+     * @method _brecWidgetsDestroy
+     */
+    _brecWidgetsDestroy: function() {
+      // FixedHeader generated its dom elements off of the body rather than relative to the table, so we need to clean this up.
+      var fixedHeaderEl = $('.fixedHeader');
+      if(fixedHeaderEl) {
+        fixedHeaderEl.remove();
+      }
+
+      // Remove the window resize event.
+      $(window).off('resize.updateFixedHeaderPosition');
+
+      // Clear any column searches
+      this.$('.dataTable tfoot input').off();
+    },
+
+    /**
      * Updates the position of the FixedHeader. Used to position it correctly without having to reinitialize the widget.
      * @private
-     * @method __updateFixedHeaderPos
+     * @method _updateFixedHeaderPos
      */
-    __updateFixedHeaderPos: function() {
+    _updateFixedHeaderPos: function() {
       this.tableHeader._fnUpdateClones(true);
     },
+
+
+    // ----- Table Management ------------------------------------------------------------------------------------------------------
 
     /**
      * Initializes the BREC table.
      * Default method may be extended with view.brecOptionsOverrides.
-     * @method __brecTableInit
+     * @method _brecTableInit
      */
-    __brecTableInit: function() {
+    _brecTableInit: function() {
       var view = this;
       var tableEl = this.$el.find('.table-data');
       this.dataTable = $(tableEl).DataTable(_.extend({
@@ -169,7 +185,7 @@
         'stateSave': true,
         'serverSide': true,
         'responsive': view.responsiveTable || false,
-        'ajax': view.__requestData.bind(view),
+        'ajax': view._requestData.bind(view),
         'fnStateLoadCallback': function() {
           try {
             var data = JSON.parse(
@@ -205,84 +221,48 @@
      * process the data and update the table. In the event of an error, trigger the error function
      * and clear the table.
      * @private
-     * @method __requestData
+     * @method _requestData
      * @param {Object} tableParams Parameters for the ajax request to retrieve the desired data
      * @param {Function} callback Required to be called by DataTables. Used to update display
      */
-    __requestData : function(tableParams, callback) {
-      var view = this;
-      view.__updateColumnSortOrdering(tableParams);
+    _requestData: function(tableParams, callback) {
+      this._updateColumnSortOrdering(tableParams);
 
       $.ajax({
-        url: view.url,
+        url: this.url,
         method: 'POST',
         contentType: 'application/json; charset=utf-8',
         dataType: 'json',
         data: JSON.stringify(tableParams),
-        success: function(result) {
-          view.trigger('successServerRetrieval');
+        context: this,
+      }).done(function(result) {
+        var view = this;
+        this.trigger('successServerRetrieval');
 
-          view.collection.fetchByIds(result.list).then(function() {
-            callback(view.__prepareData(tableParams, result));
-            view.trigger('tableUpdateComplete');
+        this.collection.fetchByIds(result.list).then(function() {
+          callback(view._prepareData(tableParams, result));
+          view._updateFixedHeaderPos();
+        });
+      }).fail(function() {
+        this.trigger('errorServerRetrieval');
 
-          });
-        },
-        error: function() {
-          view.trigger('errorServerRetrieval');
-
-          callback(view.__prepareData(tableParams));
-          view.trigger('tableUpdateComplete');
-        }
+        callback(this._prepareData(tableParams));
+        view._updateFixedHeaderPos();
       });
     },
 
 
-    // ----- Callback API ----------------------------------------------------------------------------------------------------------
+    // ----- Helpers ---------------------------------------------------------------------------------------------------------------
 
-    /**
-     * Initializes the columns of the BREC table. Column information is used in both __translateData and __constructColumns.
-     * columnInit should use __buildColumnConfig to properly format each column's information.
-     * The ordering of these items is very important as it determines what will be sent out in the orderCol queryParam.
-     * @method columnInit
-     * @return {Object[]} Returns the information to be used in constructing the columns
-     */
-    columnInit: _.noop,
-
-    /**
-     * Specifies what to do when the server call is successful.
-     * Default method may be overridden.
-     * @method successfulServerRetrieval
-     */
-    successfulServerRetrieval: _.noop,
-
-    /**
-     * Specifies what to do when the server call is unsuccessful.
-     * Default method may be overridden.
-     * @method errorServerRetrieval
-     */
-    errorServerRetrieval: _.noop,
-
-    /**
-     * Makes updates to the table without having to reinitialize the widget.
-     * @method tableUpdateComplete
-     */
-    tableUpdateComplete : function() {
-      this.__updateFixedHeaderPos();
-    },
-
-
-    // ----- Data Manipulation -----------------------------------------------------------------------------------------------------
-    
     /**
      * The effect of this method is twofold. First it updates the view's history of column sorting orderings.
      * Second it modifies the tableParams orderings to behave as a multicolumn ordering based off of the view's
      * history even on single ordering requests.
      * @private
-     * @method __updateColumnSortOrdering
+     * @method _updateColumnSortOrdering
      * @param {Object} tableParams Parameters for the ajax request to retrieve the desired data
      */
-    __updateColumnSortOrdering: function(tableParams) {
+    _updateColumnSortOrdering: function(tableParams) {
       var columnList = tableParams.order.map(function(order) {
         return order.column;
       });
@@ -300,12 +280,12 @@
      * DataTables documentation at https://datatables.net/reference/option/columns.
      * Options must include 'data' for colReorder.
      * @private
-     * @method __buildColumnConfig
+     * @method _buildColumnConfig
      * @param {String} label The id and name of the column
      * @param {Object} columnOptions Optional functions for columns with special formatting
      * @return {Object} The correctly formatted column input
      */
-    __buildColumnConfig: function(label, columnOptions) {
+    _buildColumnConfig: function(label, columnOptions) {
       return {
         'label': label,
         'options': columnOptions || {'name': label, 'data': label}
@@ -317,17 +297,17 @@
      * totalRecords is the total number of records after the server is done filtering,
      * but we are currently not doing any server-side filtering so it is equivalent to the total.
      * @private
-     * @method __prepareData
+     * @method _prepareData
      * @param {Object} tableParams Parameters for the ajax request to retrieve the desired data
      * @param {Object} result The result of the server retrieval; null if there was an error
      * @return {Object} Returns the processed data
      */
-    __prepareData : function(tableParams, result) {
+    _prepareData : function(tableParams, result) {
       var translatedData = [];
       var totalRecords = 0;
 
       if (result) {
-        translatedData = this.__translateData(result.list);
+        translatedData = this._translateData(result.list);
         totalRecords = result.fullListSize;
       }
 
@@ -352,11 +332,11 @@
      * correct list order and preserve that ordering for our final data representation.
      *
      * @private
-     * @method __translateData
+     * @method _translateData
      * @param {Number[]} idListOrder An array of longs with the ids of the objects to add in the desired order.
      * @return {Object[]} modelAsObject Returns the translated column information
      */
-    __translateData: function(idListOrder) {
+    _translateData: function(idListOrder) {
       var columnInfo = _.map(this.columnInit(), function(column){return column.label;});
       return _.compact(idListOrder.map(function(modelId) {
         var model = this.collection.get(modelId);
