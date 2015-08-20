@@ -3,7 +3,10 @@
   "version": "0.1.4",
   "description": "Torso view for BREC tables",
   "main": "index.js",
-  "dependencies": {},
+  "dependencies": {
+    "backbone-torso": "0.2.1",
+    "brec-tables": "0.2.8" 
+  },
   "devDependencies": {},
   "repository": {
     "type": "git",
