@@ -1,11 +1,11 @@
 {
   "name": "torso-brec",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Torso view for BREC tables",
   "main": "index.js",
   "dependencies": {
     "backbone-torso": "0.2.1",
-    "brec-tables": "0.2.8" 
+    "brec-tables": "0.2.8"
   },
   "devDependencies": {},
   "repository": {
