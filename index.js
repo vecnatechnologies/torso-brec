@@ -337,7 +337,7 @@
      * @return {Object[]} modelAsObject Returns the translated column information
      */
     _translateData: function(idListOrder) {
-      var columnInfo = _.map(this.columnInit(), function(column){return column.label;});
+      var columnConfigs = this.columnInit();
       return _.compact(idListOrder.map(function(modelId) {
         var model = this.collection.get(modelId);
 
@@ -348,9 +348,10 @@
           // The ordering here is very important as it determines the ordering of cells in each table row.
           // Table cells will be placed from left to right in the same order as the attributes listed here.
           modelAsObject = {};
-          for (var i=0; i<columnInfo.length; i++) {
+          for (var i=0; i<columnConfigs.length; i++) {
             // Utilize handlebars helpers to escape the html
-            modelAsObject[columnInfo[i]] = Handlebars.Utils.escapeExpression(model.get(columnInfo[i]));
+            var columnConfig = columnConfigs[i];
+            modelAsObject[columnConfig.options.name] = Handlebars.Utils.escapeExpression(model.get(columnConfig.label));
           }
         }
         return modelAsObject;
