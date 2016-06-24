@@ -239,7 +239,7 @@
         var view = this;
         this.trigger('successServerRetrieval');
 
-        this.collection.fetchByIds(result.list).then(function() {
+        this.collection.trackAndFetch(result.list).then(function() {
           callback(view._prepareData(tableParams, result));
           view._updateFixedHeaderPos();
         });
