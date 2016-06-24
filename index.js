@@ -26,7 +26,7 @@
     columnSortingOrder: [],
     colVisConfig: {
       'buttonText': "<span class='action-option icon-eye-open'></span>",
-      'restore': "Restore",
+      'restore': "Restore"
     },
 
 
@@ -59,27 +59,80 @@
     // ----- Overrides -------------------------------------------------------------------------------------------------------------
 
     /**
-     * @method initialize
+     * Override the constructor to make extending this class easier (do not need to call the parent initialize).
+     * @method constructor
      * @override
      */
-    initialize: function() {
+    constructor: function() {
+      _.bindAll(this, '_updateFixedHeaderPos', '_requestData');
+      View.apply(this, arguments);
       this.columnConfig = this.columnInit();
+      // Activate BREC event listeners
+      this.listenTo(this.viewState, 'change:dataTable.successServerRetrieval', function(viewState, successful) {
+        if (successful) {
+          this.successfulServerRetrieval(arguments);
+        } else {
+          this.errorServerRetrieval(arguments);
+        }
+      });
+      this.listenTo(this.viewState, 'change:dataTable.params', this._fetchDataTableIds);
     },
 
     /**
-     * Construct any additional resources when the view is attached to the DOM.
-     * Currently this is used to initialize javascript widgets that affect the display.
-     * @method _attached
+     * Override updateDOM to only render the template and widget the first time.  Subsequent renders use datatables
+     * to redraw the table based on changes to data.
+     * @method updateDOM
      * @override
      */
-    _attached: function() {
+    updateDOM: function() {
+      if (!this.get('dataTable.DOMDrawnOnce')) {
+        this.set('dataTable.DOMDrawnOnce', true);
+        View.prototype.updateDOM.apply(this);
+        // The following 2 methods require the $el to already be generated.
+        this._brecTableInit();
+        this._brecWidgetsInit();
+      } else {
+        this._reloadAndRedrawDataTable();
+      }
+    },
 
-      // Activate BREC event listeners
-      this.on('successServerRetrieval', this.successfulServerRetrieval);
-      this.on('errorServerRetrieval', this.errorServerRetrieval);
+    /**
+     * Fetch the ids to display for the current page of the data table.
+     * Pulled out here because the expected result is a partial list which has info about the total number of items.
+     * @method  _fetchDataTableIds
+     * @private
+     */
+    _fetchDataTableIds: function() {
+      this.set('dataTable.fetchingIds', true);
+      var tableParams = this.get('dataTable.params');
+      $.ajax({
+        url: this.url,
+        method: 'POST',
+        contentType: 'application/json; charset=utf-8',
+        dataType: 'json',
+        data: JSON.stringify(tableParams),
+        context: this
+      }).done(function(idsPartialList) {
+          this.set('dataTable.successServerRetrieval', true);
+          this.set('dataTable.idsPartialList', idsPartialList);
+        })
+        .fail(function() {
+          this.set('dataTable.successServerRetrieval', false);
+        })
+        .always(function() {
+          this.set('dataTable.fetchingIds', false);
+        });
+    },
 
-      this._brecTableInit();
-      this._brecWidgetsInit();
+    /**
+     * Causes _requestData() to be called along with a redraw of the widget.
+     * @method _reloadAndRedrawDataTable
+     * @private
+       */
+    _reloadAndRedrawDataTable: function() {
+      if (this.dataTable) {
+        this.dataTable.ajax.reload(null, false);
+      }
     },
 
     /**
@@ -89,11 +142,6 @@
      * @override
      */
     _detached: function() {
-
-      // Deactivate BREC event listeners
-      this.off('successServerRetrieval');
-      this.off('errorServerRetrieval');
-
       this._brecWidgetsDestroy();
     },
 
@@ -114,7 +162,7 @@
         // Initialize the show/hide button
         var colvis = new $.fn.dataTable.ColVis(this.dataTable, this.colVisConfig);
         this.$('.action-view').append($(colvis.button()));
-      };
+      }
 
       // Initialize column reordering
       new $.fn.dataTable.ColReorder(this.dataTable, this.colReorderExtensions);
@@ -129,7 +177,7 @@
       });
 
       // Need to update the FixedHeader positions on window resize
-      $(window).on('resize.updateFixedHeaderPosition', this._updateFixedHeaderPos.bind(this));
+      $(window).on('resize.updateFixedHeaderPosition', this._updateFixedHeaderPos);
 
       // Add search functionality to individual columns
       this.$(".dataTable tfoot input").on('keyup change', function () {
@@ -166,7 +214,9 @@
      * @method _updateFixedHeaderPos
      */
     _updateFixedHeaderPos: function() {
-      this.tableHeader._fnUpdateClones(true);
+      if (this.tableHeader) {
+        this.tableHeader._fnUpdateClones(true);
+      }
     },
 
 
@@ -181,12 +231,13 @@
       var view = this;
       var tableEl = this.$el.find('.table-data');
       this.dataTable = $(tableEl).DataTable(_.extend({
-        'dom': view.tableControls,
-        'stateSave': true,
-        'serverSide': true,
-        'responsive': view.responsiveTable || false,
-        'ajax': view._requestData.bind(view),
-        'fnStateLoadCallback': function() {
+        dom: view.tableControls,
+        stateSave: true,
+        serverSide: true,
+        processing: false,
+        responsive: view.responsiveTable || false,
+        ajax: view._requestData,
+        fnStateLoadCallback: function() {
           try {
             var data = JSON.parse(
               localStorage.getItem('DataTables_settings_' + location.pathname)
@@ -197,7 +248,7 @@
             // Errors here indicate a failure to parse the settings JSON. Since this is a non-critical system, fail silently.
           }
         },
-        'fnStateSaveCallback': function ( settings, data ) {
+        fnStateSaveCallback: function ( settings, data ) {
           try {
             // Clear individual column searches
             for (var i = 0; i<data.columns.length; i++) {
@@ -211,7 +262,7 @@
             // Same as fnStateLoadCallback.
           }
         },
-        'columns': _.map(this.columnConfig, function(column){return column.options;})
+        columns: _.map(this._initializeAndGetColumnConfig(), function(column){return column.options;})
       }, view.tableOptionsExtensions));
       _.extend(this.colVisConfig, this.colVisExtensions);
     },
@@ -227,32 +278,33 @@
      */
     _requestData: function(tableParams, callback) {
       this._updateColumnSortOrdering(tableParams);
+      var tableParamsWithoutDrawCounter = _.clone(tableParams);
+      // Remove the draw field to trigger change events correctly.
+      // The draw property will increment on every call to this method.
+      delete tableParamsWithoutDrawCounter.draw;
+      this.set('dataTable.params', tableParamsWithoutDrawCounter);
 
-      $.ajax({
-        url: this.url,
-        method: 'POST',
-        contentType: 'application/json; charset=utf-8',
-        dataType: 'json',
-        data: JSON.stringify(tableParams),
-        context: this,
-      }).done(function(result) {
-        var view = this;
-        this.trigger('successServerRetrieval');
-
-        this.collection.trackAndFetch(result.list).then(function() {
-          callback(view._prepareData(tableParams, result));
-          view._updateFixedHeaderPos();
-        });
-      }).fail(function() {
-        this.trigger('errorServerRetrieval');
-
-        callback(this._prepareData(tableParams));
-        view._updateFixedHeaderPos();
-      });
+      var idsPartialList = this.get('dataTable.idsPartialList');
+      var dataTableContent = this._prepareData(tableParams, idsPartialList);
+      callback(dataTableContent);
+      this._updateFixedHeaderPos();
     },
 
 
     // ----- Helpers ---------------------------------------------------------------------------------------------------------------
+
+    /**
+     * Initializes the columns if they are not already and returns the result.
+     * @method _initializeAndGetColumnConfig
+     * @returns {Object} the column configurations.
+     * @private
+     */
+    _initializeAndGetColumnConfig: function() {
+      if (!this.columnConfig) {
+        this.columnConfig = this.columnInit();
+      }
+      return this.columnConfig;
+    },
 
     /**
      * The effect of this method is twofold. First it updates the view's history of column sorting orderings.
@@ -337,7 +389,7 @@
      * @return {Object[]} modelAsObject Returns the translated column information
      */
     _translateData: function(idListOrder) {
-      var columnConfigs = this.columnInit();
+      var columnConfigs = this._initializeAndGetColumnConfig();
       return _.compact(idListOrder.map(function(modelId) {
         var model = this.collection.get(modelId);
 
@@ -349,9 +401,13 @@
           // Table cells will be placed from left to right in the same order as the attributes listed here.
           modelAsObject = {};
           for (var i=0; i<columnConfigs.length; i++) {
-            // Utilize handlebars helpers to escape the html
             var columnConfig = columnConfigs[i];
-            modelAsObject[columnConfig.options.name] = Handlebars.Utils.escapeExpression(model.get(columnConfig.label));
+            var data = model.get(columnConfig.label);
+            if (_.isString(data)) {
+              // Utilize handlebars helpers to escape the html if the data is a string.
+              data =  Handlebars.Utils.escapeExpression(model.get(columnConfig.label));
+            }
+            modelAsObject[columnConfig.options.name] = data;
           }
         }
         return modelAsObject;
