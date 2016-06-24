@@ -277,6 +277,7 @@
      * @param {Function} callback Required to be called by DataTables. Used to update display
      */
     _requestData: function(tableParams, callback) {
+      this._updateColumnSortOrdering(tableParams);
       var tableParamsWithoutDrawCounter = _.clone(tableParams);
       // Remove the draw field to trigger change events correctly.
       // The draw property will increment on every call to this method.
