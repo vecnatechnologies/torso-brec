@@ -55,6 +55,23 @@
      */
     errorServerRetrieval: _.noop,
 
+    /**
+     * Additional criteria to use when retrieving the ids.  Will be merged with the table parameters.
+     * @method additionalSearchCriteria
+     */
+    additionalSearchCriteria: _.noop,
+
+    /**
+     * Another way to override the search criteria if you need to modify how tableParams are included, or need to base
+     * the new criteria off of table parameters.
+     * @method getSearchCriteria
+     * @param tableParams {Object} the current settings for the display table to search with.
+     */
+    getSearchCriteria: function(tableParams) {
+      var searchCriteria = _.extend({}, _.result(this, 'additionalSearchCriteria'), tableParams);
+      return searchCriteria;
+    },
+
 
     // ----- Overrides -------------------------------------------------------------------------------------------------------------
 
@@ -105,12 +122,13 @@
     _fetchDataTableIds: function() {
       this.set('dataTable.fetchingIds', true);
       var tableParams = this.get('dataTable.params');
+      var searchCriteria = this.getSearchCriteria(tableParams);
       $.ajax({
         url: this.url,
         method: 'POST',
         contentType: 'application/json; charset=utf-8',
         dataType: 'json',
-        data: JSON.stringify(tableParams),
+        data: JSON.stringify(searchCriteria),
         context: this
       }).done(function(idsPartialList) {
           this.set('dataTable.successServerRetrieval', true);
@@ -263,7 +281,7 @@
           }
         },
         columns: _.map(this._initializeAndGetColumnConfig(), function(column){return column.options;})
-      }, view.tableOptionsExtensions));
+      }, _.result(view, 'tableOptionsExtensions')));
       _.extend(this.colVisConfig, this.colVisExtensions);
     },
 
@@ -400,9 +418,9 @@
           // The ordering here is very important as it determines the ordering of cells in each table row.
           // Table cells will be placed from left to right in the same order as the attributes listed here.
           modelAsObject = {};
-          for (var i=0; i<columnConfigs.length; i++) {
+          for (var i = 0; i < columnConfigs.length; i++) {
             var columnConfig = columnConfigs[i];
-            var data = model.get(columnConfig.label);
+            var data = model.get(columnConfig.label) || '';
             if (_.isString(data)) {
               // Utilize handlebars helpers to escape the html if the data is a string.
               data =  Handlebars.Utils.escapeExpression(model.get(columnConfig.label));
