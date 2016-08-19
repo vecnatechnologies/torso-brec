@@ -420,7 +420,7 @@
           modelAsObject = {};
           for (var i = 0; i < columnConfigs.length; i++) {
             var columnConfig = columnConfigs[i];
-            var data = model.get(columnConfig.label) || '';
+            var data = model.get(columnConfig.label) != undefined ? model.get(columnConfig.label) : '';
             if (_.isString(data)) {
               // Utilize handlebars helpers to escape the html if the data is a string.
               data =  Handlebars.Utils.escapeExpression(model.get(columnConfig.label));
