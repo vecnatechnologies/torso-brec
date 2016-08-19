@@ -1,6 +1,6 @@
 {
   "name": "torso-brec",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Torso view for BREC tables",
   "main": "index.js",
   "dependencies": {},
